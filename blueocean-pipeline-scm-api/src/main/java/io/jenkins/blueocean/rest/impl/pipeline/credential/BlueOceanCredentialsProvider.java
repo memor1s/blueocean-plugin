@@ -13,6 +13,9 @@ import com.cloudbees.plugins.credentials.common.IdCredentials;
 import com.cloudbees.plugins.credentials.domains.Domain;
 import com.cloudbees.plugins.credentials.domains.DomainRequirement;
 import hudson.Extension;
+import hudson.init.InitMilestone;
+import hudson.init.Initializer;
+import hudson.model.AdministrativeMonitor;
 import hudson.model.ItemGroup;
 import hudson.model.ModelObject;
 import hudson.model.TopLevelItem;
@@ -24,9 +27,14 @@ import hudson.util.ListBoxModel;
 import io.jenkins.blueocean.credential.CredentialsUtils;
 import io.jenkins.blueocean.pipeline.credential.Messages;
 import jenkins.model.Jenkins;
+import jenkins.util.SystemProperties;
 import net.sf.json.JSONObject;
 import org.acegisecurity.Authentication;
 import org.acegisecurity.userdetails.UsernameNotFoundException;
+import org.jenkinsci.Symbol;
+import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
+import org.kohsuke.accmod.Restricted;
+import org.kohsuke.accmod.restrictions.NoExternalUse;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.StaplerRequest;
 import org.slf4j.Logger;
@@ -59,6 +67,8 @@ public class BlueOceanCredentialsProvider extends CredentialsProvider {
     private static final BlueOceanDomainRequirement PROXY_REQUIREMENT = new BlueOceanDomainRequirement();
     private static final Logger logger = LoggerFactory.getLogger(BlueOceanCredentialsProvider.class);
 
+    private static final Boolean ENABLED = SystemProperties.getBoolean( BlueOceanCredentialsProvider.class.getName() + ".enabled" );
+
     @Nonnull
     @Override
     public <C extends Credentials> List<C> getCredentials(@Nonnull Class<C> type,
@@ -68,22 +78,31 @@ public class BlueOceanCredentialsProvider extends CredentialsProvider {
         return getCredentials(type, itemGroup, authentication, Collections.emptyList());
     }
 
+    @Override
+    public boolean isEnabled(Object context)
+    {
+        return ENABLED && super.isEnabled(context);
+    }
+
     @Nonnull
     public <C extends Credentials> List<C> getCredentials(@Nonnull final Class<C> type,
                                                           @Nullable ItemGroup itemGroup,
                                                           @Nullable
                                                               Authentication authentication,
                                                           @Nonnull List<DomainRequirement> domainRequirements) {
+        if (!ENABLED) {
+            return Collections.emptyList();
+        }
         final List<C> result = new ArrayList<>();
         final FolderPropertyImpl prop = propertyOf(itemGroup);
         if (prop != null && prop.domain.test(domainRequirements)) {
             final User proxyUser = User.get(prop.getUser(), false, Collections.emptyMap());
             if (proxyUser != null) {
-                try (ACLContext ignored = ACL.as(proxyUser.impersonate())) {
+                try (ACLContext ignored = ACL.as( proxyUser.impersonate())) {
                     for (CredentialsStore s : CredentialsProvider.lookupStores(proxyUser)) {
                         for (Domain d : s.getDomains()) {
-                            if (d.test(PROXY_REQUIREMENT)) {
-                                for (Credentials c : filter(s.getCredentials(d), withId(prop.getId()))) {
+                            if (d.test( PROXY_REQUIREMENT)) {
+                                for (Credentials c : filter( s.getCredentials( d ), withId(prop.getId()))) {
                                     if (type.isInstance(c)) {
                                         result.add((C) c);
                                     }
@@ -91,14 +110,14 @@ public class BlueOceanCredentialsProvider extends CredentialsProvider {
                             }
                         }
                     }
-                } catch (UsernameNotFoundException ex) {
-                    logger.warn("BlueOceanCredentialsProvider#getCredentials(): Username attached to credentials can not be found");
+                }catch ( UsernameNotFoundException ex ) {
+                    logger.warn(
+                        "BlueOceanCredentialsProvider#getCredentials(): Username attached to credentials can not be found" );
                 }
             }
         }
         return result;
     }
-
 
     @Nonnull
     @Override
@@ -107,6 +126,9 @@ public class BlueOceanCredentialsProvider extends CredentialsProvider {
                                                                    @Nullable Authentication authentication,
                                                                    @Nonnull List<DomainRequirement> domainRequirements,
                                                                    @Nonnull CredentialsMatcher matcher) {
+        if (!ENABLED) {
+            return new ListBoxModel();
+        }
         ListBoxModel result = new ListBoxModel();
         FolderPropertyImpl prop = propertyOf(itemGroup);
         if (prop != null && prop.domain.test(domainRequirements)) {
@@ -123,6 +145,9 @@ public class BlueOceanCredentialsProvider extends CredentialsProvider {
 
     @Override
     public CredentialsStore getStore(@CheckForNull ModelObject object) {
+        if (!ENABLED) {
+            return null;
+        }
         FolderPropertyImpl property = propertyOf(object);
         return property != null ? property.getStore() : null;
     }
@@ -286,6 +311,9 @@ public class BlueOceanCredentialsProvider extends CredentialsProvider {
             @Nonnull
             @Override
             public List<Credentials> getCredentials(@Nonnull Domain domain) {
+                if(!ENABLED) {
+                    return Collections.emptyList();
+                }
                 final List<Credentials> result = new ArrayList<>(1);
                 if (domain.equals(FolderPropertyImpl.this.domain)) {
                     final User proxyUser = User.get(getUser(), false, Collections.emptyMap());

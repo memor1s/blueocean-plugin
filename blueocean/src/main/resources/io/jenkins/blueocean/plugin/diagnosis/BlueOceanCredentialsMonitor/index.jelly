@@ -1,0 +1,24 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:l="/lib/layout" xmlns:f="/lib/form" xmlns:i="jelly:fmt" xmlns:st="jelly:stapler">
+  <l:layout title="BO Credentials">
+    <st:include page="sidepanel" it="${app}"/>
+    <l:main-panel>
+      <h1>${%BlueOcean Credentials}</h1>
+
+      <p>${%blurb}</p>
+      <p>Change SCM Source used by</p>
+      <ul>
+        <j:forEach var="entry" items="${it.projectsNamesUrlsWithBoFolderCred}">
+          <li>${%linkToProject(rootURL+'/'+entry.value, entry.key)}</li>
+        </j:forEach>
+      </ul>
+
+      <p>
+      ${%scanning.warning}
+      </p>
+      <p>${%scanning.property}
+        <pre>-Dio.jenkins.blueocean.plugin.diagnosis.BlueOceanCredentialsMonitor.scanning.interval.minutes=5</pre>
+      </p>
+    </l:main-panel>
+  </l:layout>
+</j:jelly>
