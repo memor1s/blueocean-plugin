@@ -128,7 +128,7 @@ public class BlueOceanCredentialsMonitor extends AdministrativeMonitor
                                                       (List<DomainRequirement>) null),
                 CredentialsMatchers.allOf(CredentialsMatchers.withId(credentialsId),
                                           CredentialsMatchers.withScope(CredentialsScope.USER)));
-            if (credentialsId != null) {
+            if (standardCredentials != null) {
                 LOGGER.debug( "find standardCredentials for user {} with id {} and description {}", userId,
                               credentialsId, standardCredentials.getDescription() );
             } else {
