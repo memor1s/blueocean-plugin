@@ -1,10 +1,19 @@
 package io.jenkins.blueocean.plugin.diagnosis;
 
+import com.cloudbees.plugins.credentials.Credentials;
+import com.cloudbees.plugins.credentials.CredentialsMatchers;
+import com.cloudbees.plugins.credentials.CredentialsProvider;
+import com.cloudbees.plugins.credentials.CredentialsScope;
+import com.cloudbees.plugins.credentials.common.StandardCredentials;
+import com.cloudbees.plugins.credentials.domains.DomainRequirement;
 import hudson.Extension;
 import hudson.ExtensionList;
 import hudson.init.InitMilestone;
 import hudson.init.Initializer;
 import hudson.model.AdministrativeMonitor;
+import hudson.model.User;
+import hudson.security.ACL;
+import hudson.security.ACLContext;
 import io.jenkins.blueocean.rest.impl.pipeline.credential.BlueOceanCredentialsProvider;
 import jenkins.model.Jenkins;
 import jenkins.scm.api.SCMSource;
@@ -20,6 +29,7 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +44,9 @@ public class BlueOceanCredentialsMonitor extends AdministrativeMonitor
 
     private static final Logger LOGGER = LoggerFactory.getLogger( BlueOceanCredentialsProvider.class);
 
-    Map<String,String> projectsNamesUrlsWithBoFolderCred = new ConcurrentHashMap<>();
+    private Map<String,String> projectsNamesUrlsWithBoFolderCred = new ConcurrentHashMap<>();
+
+    //private Map<String, String> userIdCredentialId = new ConcurrentHashMap<>();
 
     private static final long SCANNING_INTERVAL =
         SystemProperties.getLong(BlueOceanCredentialsMonitor.class.getName() + ".scanning.interval.minutes", 30L);
@@ -87,7 +99,9 @@ public class BlueOceanCredentialsMonitor extends AdministrativeMonitor
                     BlueOceanCredentialsProvider.FolderPropertyImpl property =
                         project.getProperties().get( BlueOceanCredentialsProvider.FolderPropertyImpl.class );
                     if (property != null) {
-                        if(StringUtils.equals(property.getId(), credentialsId)) {
+                        // property id is same as credentials and this is a credentials stored at USER scope
+                        if(StringUtils.equals(property.getId(), credentialsId)
+                            && findCredentials(property.getUser(), credentialsId) != null) {
                             projectsNamesUrls.put(project.getName(), project.getUrl());
                         }
                     }
@@ -98,10 +112,30 @@ public class BlueOceanCredentialsMonitor extends AdministrativeMonitor
                 }
             }
         }
+
         projectsNamesUrlsWithBoFolderCred.clear();
         projectsNamesUrlsWithBoFolderCred.putAll(projectsNamesUrls);
 
         LOGGER.debug("end scan multibranch projects, projects found {}", projectsNamesUrls.size());
+    }
+
+    private Credentials findCredentials( String userId, String credentialsId ) {
+        User proxyUser = User.get(userId, false, Collections.emptyMap());
+        try (ACLContext ignored = ACL.as( proxyUser.impersonate())) {
+            StandardCredentials standardCredentials = CredentialsMatchers.firstOrNull(
+                CredentialsProvider.lookupCredentials(StandardCredentials.class, Jenkins.get(),
+                                                      Jenkins.getAuthentication(),
+                                                      (List<DomainRequirement>) null),
+                CredentialsMatchers.allOf(CredentialsMatchers.withId(credentialsId),
+                                          CredentialsMatchers.withScope(CredentialsScope.USER)));
+            if (credentialsId != null) {
+                LOGGER.debug( "find standardCredentials for user {} with id {} and description {}", userId,
+                              credentialsId, standardCredentials.getDescription() );
+            } else {
+                LOGGER.debug( "find standardCredentials for user {} with id {}", userId, credentialsId);
+            }
+            return standardCredentials;
+        }
     }
 
 }
