@@ -205,6 +205,10 @@ public class PipelineNodeGraphVisitor extends StandardChunkVisitor implements No
 
         // it's nested stages inside parallel so let's collect them later
         if (!parallelEnds.isEmpty()) {
+            // nested stages not supported in scripted pipeline.
+            if (!isDeclarative()) {
+                return;
+            }
             parallelNestedStages = true;
         }
 
